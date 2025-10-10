@@ -38,7 +38,9 @@ import org.apache.geaflow.dsl.udf.graph.AllSourceShortestPath;
 import org.apache.geaflow.dsl.udf.graph.ClosenessCentrality;
 import org.apache.geaflow.dsl.udf.graph.CommonNeighbors;
 import org.apache.geaflow.dsl.udf.graph.IncKHopAlgorithm;
+import org.apache.geaflow.dsl.udf.graph.IncMinimumSpanningTree;
 import org.apache.geaflow.dsl.udf.graph.IncWeakConnectedComponents;
+import org.apache.geaflow.dsl.udf.graph.IncrementalKCore;
 import org.apache.geaflow.dsl.udf.graph.KCore;
 import org.apache.geaflow.dsl.udf.graph.KHop;
 import org.apache.geaflow.dsl.udf.graph.PageRank;
@@ -209,6 +211,8 @@ public class BuildInSqlFunctionTable extends ListSqlOperatorTable {
             .add(GeaFlowFunction.of(PageRank.class))
             .add(GeaFlowFunction.of(KHop.class))
             .add(GeaFlowFunction.of(KCore.class))
+            .add(GeaFlowFunction.of(IncrementalKCore.class))
+            .add(GeaFlowFunction.of(IncMinimumSpanningTree.class))
             .add(GeaFlowFunction.of(ClosenessCentrality.class))
             .add(GeaFlowFunction.of(WeakConnectedComponents.class))
             .add(GeaFlowFunction.of(TriangleCount.class))
