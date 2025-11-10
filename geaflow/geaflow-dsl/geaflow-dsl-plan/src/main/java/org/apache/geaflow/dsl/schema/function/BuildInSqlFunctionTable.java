@@ -212,6 +212,7 @@ public class BuildInSqlFunctionTable extends ListSqlOperatorTable {
             .add(GeaFlowFunction.of(ClosenessCentrality.class))
             .add(GeaFlowFunction.of(WeakConnectedComponents.class))
             .add(GeaFlowFunction.of(TriangleCount.class))
+            .add(GeaFlowFunction.of(LabelPropagation.class))
             .add(GeaFlowFunction.of(IncWeakConnectedComponents.class))
             .add(GeaFlowFunction.of(CommonNeighbors.class))
             .add(GeaFlowFunction.of(IncKHopAlgorithm.class))

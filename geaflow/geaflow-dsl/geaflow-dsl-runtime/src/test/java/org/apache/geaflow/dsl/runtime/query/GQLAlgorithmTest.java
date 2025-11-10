@@ -144,6 +144,25 @@ public class GQLAlgorithmTest {
     }
 
     @Test
+    public void testAlgorithmLabelPropagation() throws Exception {
+        QueryTester
+            .build()
+            .withGraphDefine("/query/modern_graph.sql")
+            .withQueryPath("/query/gql_algorithm_lpa.sql")
+            .execute()
+            .checkSinkResult();
+    }
+
+    @Test
+    public void testAlgorithmLabelPropagationMultiComponents() throws Exception {
+        QueryTester
+            .build()
+            .withQueryPath("/query/gql_algorithm_lpa_multi_components.sql")
+            .execute()
+            .checkSinkResult();
+    }
+
+    @Test
     public void testIncGraphAlgorithm_001() throws Exception {
         QueryTester
             .build()
