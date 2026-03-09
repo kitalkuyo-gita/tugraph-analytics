@@ -178,6 +178,12 @@ public class InferEnvironmentManager implements AutoCloseable {
         execParams.add(requirementsPath);
         String conda = configuration.getString(INFER_ENV_CONDA_URL);
         execParams.add(conda);
+        String frameworkType = configuration.getString(FrameworkConfigKeys.INFER_FRAMEWORK_TYPE);
+        boolean paddleGpuEnable = configuration.getBoolean(FrameworkConfigKeys.INFER_ENV_PADDLE_GPU_ENABLE);
+        String paddleCudaVersion = configuration.getString(FrameworkConfigKeys.INFER_ENV_PADDLE_CUDA_VERSION);
+        execParams.add(frameworkType);
+        execParams.add(String.valueOf(paddleGpuEnable));
+        execParams.add(paddleCudaVersion);
         List<String> shellCommand = new ArrayList<>(Arrays.asList(SHELL_START, shellPath));
         shellCommand.addAll(execParams);
         String cmd = Joiner.on(" ").join(shellCommand);

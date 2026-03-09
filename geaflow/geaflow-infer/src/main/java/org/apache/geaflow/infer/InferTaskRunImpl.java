@@ -18,6 +18,7 @@
  */
 package org.apache.geaflow.infer;
 
+import static org.apache.geaflow.common.config.keys.FrameworkConfigKeys.INFER_ENV_INIT_TIMEOUT_SEC;
 import static org.apache.geaflow.common.config.keys.FrameworkConfigKeys.INFER_USER_DEFINE_LIB_PATH;
 import static org.apache.geaflow.infer.InferTaskStatus.FAILED;
 
@@ -43,7 +44,7 @@ public class InferTaskRunImpl implements InferTaskRun {
     private static final File NULL_FILE = new File((System.getProperty("os.name").startsWith(
         "Windows") ? "NUL" : "/dev/null"));
 
-    private static final long TIMEOUT_SECOND = 10;
+    private static final long DEFAULT_TIMEOUT_SECOND = 10;
     private static final String SCRIPT_SEPARATOR = " ";
     private static final String LD_LIBRARY_PATH = "LD_LIBRARY_PATH";
     private static final String PATH = "PATH";
@@ -54,6 +55,7 @@ public class InferTaskRunImpl implements InferTaskRun {
     private final String virtualEnvPath;
     private final String inferFilePath;
     private final String executePath;
+    private final long taskTimeoutSeconds;
     private Process inferTask;
     private String inferScript;
 
@@ -65,6 +67,8 @@ public class InferTaskRunImpl implements InferTaskRun {
         this.inferFilePath = inferEnvironmentContext.getInferFilesDirectory();
         this.virtualEnvPath = inferEnvironmentContext.getVirtualEnvDirectory();
         this.executePath = this.virtualEnvPath + "/bin";
+        Integer configuredTimeout = this.jobConfig.getInteger(INFER_ENV_INIT_TIMEOUT_SEC);
+        this.taskTimeoutSeconds = configuredTimeout == null ? DEFAULT_TIMEOUT_SECOND : configuredTimeout;
     }
 
     @Override
@@ -79,7 +83,7 @@ public class InferTaskRunImpl implements InferTaskRun {
             ProcessLoggerManager processLogger = new ProcessLoggerManager(inferTask, new Slf4JProcessOutputConsumer(this.getClass().getSimpleName()));
             processLogger.startLogging();
             int exitValue = 0;
-            if (inferTask.waitFor(TIMEOUT_SECOND, TimeUnit.SECONDS)) {
+            if (inferTask.waitFor(taskTimeoutSeconds, TimeUnit.SECONDS)) {
                 exitValue = inferTask.exitValue();
                 this.inferTaskStatus = FAILED;
             } else {

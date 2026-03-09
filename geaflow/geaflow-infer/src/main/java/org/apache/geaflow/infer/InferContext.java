@@ -19,6 +19,7 @@
 package org.apache.geaflow.infer;
 
 import static org.apache.geaflow.common.config.keys.FrameworkConfigKeys.INFER_ENV_USER_TRANSFORM_CLASSNAME;
+import static org.apache.geaflow.common.config.keys.FrameworkConfigKeys.INFER_FRAMEWORK_TYPE;
 
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ public class InferContext<OUT> implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(InferContext.class);
     private final DataExchangeContext shareMemoryContext;
     private final String userDataTransformClass;
+    private final String inferFrameworkType;
     private final String sendQueueKey;
 
     private final String receiveQueueKey;
@@ -46,6 +48,7 @@ public class InferContext<OUT> implements AutoCloseable {
         this.receiveQueueKey = shareMemoryContext.getReceiveQueueKey();
         this.sendQueueKey = shareMemoryContext.getSendQueueKey();
         this.userDataTransformClass = config.getString(INFER_ENV_USER_TRANSFORM_CLASSNAME);
+        this.inferFrameworkType = config.getString(INFER_FRAMEWORK_TYPE);
         Preconditions.checkNotNull(userDataTransformClass,
             INFER_ENV_USER_TRANSFORM_CLASSNAME.getKey() + " param must be not null");
         this.dataBridge = new InferDataBridgeImpl<>(shareMemoryContext);
@@ -87,9 +90,11 @@ public class InferContext<OUT> implements AutoCloseable {
         List<String> runCommands = new ArrayList<>();
         runCommands.add(inferEnvironmentContext.getPythonExec());
         runCommands.add(inferEnvironmentContext.getInferScript());
+        runCommands.add(inferEnvironmentContext.getInferModelClassNameParam(this.userDataTransformClass));
         runCommands.add(inferEnvironmentContext.getInferTFClassNameParam(this.userDataTransformClass));
         runCommands.add(inferEnvironmentContext.getInferShareMemoryInputParam(receiveQueueKey));
         runCommands.add(inferEnvironmentContext.getInferShareMemoryOutputParam(sendQueueKey));
+        runCommands.add(inferEnvironmentContext.getInferFrameworkParam(this.inferFrameworkType));
         inferTaskRunner.run(runCommands);
     }
 

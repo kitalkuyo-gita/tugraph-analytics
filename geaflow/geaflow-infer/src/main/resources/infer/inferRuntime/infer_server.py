@@ -26,6 +26,9 @@ import traceback
 from inferSession import TorchInferSession
 from pickle_bridge import PicklerDataBridger
 
+FRAMEWORK_TORCH = "TORCH"
+FRAMEWORK_PADDLE = "PADDLE"
+
 class check_ppid(threading.Thread):
     def __init__(self, name, daemon):
         super().__init__(name=name, daemon=daemon)
@@ -54,9 +57,19 @@ def get_user_define_class(class_name):
         raise ValueError("class name = {} not found".format(class_name))
 
 
-def start_infer_process(class_name, output_queue_shm_id, input_queue_shm_id):
+def build_infer_session(framework, transform_class):
+    framework = (framework or FRAMEWORK_TORCH).upper()
+    if framework == FRAMEWORK_PADDLE:
+        from paddleInferSession import PaddleInferSession
+        return PaddleInferSession(transform_class)
+    if framework != FRAMEWORK_TORCH:
+        raise ValueError("Unsupported framework {}".format(framework))
+    return TorchInferSession(transform_class)
+
+
+def start_infer_process(class_name, output_queue_shm_id, input_queue_shm_id, framework):
     transform_class = get_user_define_class(class_name)
-    infer_session = TorchInferSession(transform_class)
+    infer_session = build_infer_session(framework, transform_class)
     input_size = transform_class.input_size
     data_exchange = PicklerDataBridger(input_queue_shm_id, output_queue_shm_id, input_size)
     check_thread = check_ppid('check_process', True)
@@ -84,11 +97,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--tfClassName", type=str,
                         help="user define transformer class name")
+    parser.add_argument("--modelClassName", type=str,
+                        help="framework agnostic transformer class name")
+    parser.add_argument("--framework", type=str, default=FRAMEWORK_TORCH,
+                        help="infer framework type, e.g. TORCH or PADDLE")
     parser.add_argument("--input_queue_shm_id", type=str, help="input queue "
                                                                "share memory "
                                                                "id")
     parser.add_argument("--output_queue_shm_id", type=str,
                         help="output queue share memory id")
     args = parser.parse_args()
-    start_infer_process(args.tfClassName, args.output_queue_shm_id,
-                        args.input_queue_shm_id)
+    class_name = args.modelClassName or args.tfClassName
+    if not class_name:
+        raise ValueError("tfClassName or modelClassName must be provided")
+    start_infer_process(class_name, args.output_queue_shm_id,
+                        args.input_queue_shm_id, args.framework)

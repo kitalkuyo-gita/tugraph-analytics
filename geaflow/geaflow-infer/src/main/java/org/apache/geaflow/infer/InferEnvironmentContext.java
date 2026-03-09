@@ -40,6 +40,10 @@ public class InferEnvironmentContext {
     // Start infer process parameter.
     private static final String TF_CLASSNAME_KEY = "--tfClassName=";
 
+    private static final String MODEL_CLASSNAME_KEY = "--modelClassName=";
+
+    private static final String FRAMEWORK_KEY = "--framework=";
+
     private static final String SHARE_MEMORY_INPUT_KEY = "--input_queue_shm_id=";
 
     private static final String SHARE_MEMORY_OUTPUT_KEY = "--output_queue_shm_id=";
@@ -128,6 +132,14 @@ public class InferEnvironmentContext {
 
     public String getInferTFClassNameParam(String udfClassName) {
         return TF_CLASSNAME_KEY + udfClassName;
+    }
+
+    public String getInferModelClassNameParam(String udfClassName) {
+        return MODEL_CLASSNAME_KEY + udfClassName;
+    }
+
+    public String getInferFrameworkParam(String frameworkType) {
+        return FRAMEWORK_KEY + frameworkType;
     }
 
     public String getInferShareMemoryInputParam(String shareMemoryInputKey) {

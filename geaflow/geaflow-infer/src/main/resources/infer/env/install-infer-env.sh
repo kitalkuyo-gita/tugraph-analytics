@@ -22,10 +22,14 @@
 CURRENT_DIR="$(cd "$1" && pwd)"
 REQUIREMENTS_PATH=$2
 MINICOMDA_OSS_URL=$3
+FRAMEWORK_TYPE=${4:-"TORCH"}
+PADDLE_GPU_ENABLE=${5:-"false"}
+PADDLE_CUDA_VERSION=${6:-"12.0"}
 PYTHON_EXEC=$CURRENT_DIR/conda/bin/python3
 
 echo "execute shell at path ${CURRENT_DIR}"
 echo "install requirements path ${REQUIREMENTS_PATH}"
+echo "framework type ${FRAMEWORK_TYPE}, paddle gpu enable ${PADDLE_GPU_ENABLE}, cuda version ${PADDLE_CUDA_VERSION}"
 
 MINICONDA_INSTALL=$CURRENT_DIR/miniconda.sh
 [ ! -e $MINICONDA_INSTALL ] && touch $MINICONDA_INSTALL
@@ -71,6 +75,63 @@ function install_miniconda() {
         fi
         print_function "STEP" "install conda ... [SUCCESS]"
     fi
+}
+
+function resolve_paddle_gpu_package() {
+    local cuda_version=$1
+    case "$cuda_version" in
+        "11.7")
+            echo "paddlepaddle-gpu==2.5.0"
+            ;;
+        "11.8")
+            echo "paddlepaddle-gpu==2.5.2"
+            ;;
+        "12.0")
+            echo "paddlepaddle-gpu==2.6.0.post120"
+            ;;
+        *)
+            echo "paddlepaddle-gpu"
+            ;;
+    esac
+}
+
+function pip_install_with_retry() {
+    local package=$1
+    local description=$2
+    local max_retry_times=3
+    local retry_times=0
+    source $CURRENT_DIR/conda/bin/activate
+    local install_command="conda run -p $CURRENT_DIR/conda $PYTHON_EXEC -m pip install --ignore-installed ${package}"
+    ${install_command} >/dev/null 2>&1
+    local status=$?
+    while [[ ${status} -ne 0 ]] && [[ ${retry_times} -lt ${max_retry_times} ]]; do
+        retry_times=$((retry_times + 1))
+        sleep 3
+        echo "${description} retrying ${retry_times}/${max_retry_times}"
+        ${install_command} >/dev/null 2>&1
+        status=$?
+    done
+    if [[ ${status} -ne 0 ]]; then
+        echo "${description} failed after retrying ${max_retry_times} times. You can retry to execute the script again."
+        exit 1
+    fi
+}
+
+function install_paddle_stack() {
+    local framework_upper
+    framework_upper=$(echo "${FRAMEWORK_TYPE}" | tr '[:lower:]' '[:upper:]')
+    if [ "${framework_upper}" != "PADDLE" ]; then
+        return
+    fi
+    print_function "STEP" "install paddle runtime dependencies..."
+    local paddle_pkg="paddlepaddle"
+    if [ "${PADDLE_GPU_ENABLE}" == "true" ]; then
+        paddle_pkg=$(resolve_paddle_gpu_package "${PADDLE_CUDA_VERSION}")
+    fi
+    pip_install_with_retry "${paddle_pkg}" "install ${paddle_pkg}"
+    pip_install_with_retry "pgl" "install pgl"
+    pip_install_with_retry "paddlespatial" "install paddlespatial"
+    print_function "STEP" "install paddle runtime dependencies... [SUCCESS]"
 }
 
 # Install requirements.
@@ -145,6 +206,7 @@ if [ $STEP -lt 1 ]; then
 fi
 
 if [ $STEP -lt 2 ]; then
+  install_paddle_stack
   install_requirements ${REQUIREMENTS_PATH}
   STEP=2
   print_function "STEP" "install requirements... [SUCCESS]"
