@@ -19,9 +19,23 @@
 
 package org.apache.geaflow.dsl.runtime.query;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.testng.annotations.Test;
 
 public class TableScanTest {
+
+    @Test(timeOut = 60000)
+    public void testEmptySourceHasRunnableParallelism() throws Exception {
+        Path empty = Files.createTempDirectory("geaflow-empty-source-");
+        try {
+            QueryTester.build().withQueryPath("/query/scan_empty.sql")
+                .withConfig("test.empty.source", empty.toUri().toString())
+                .execute().checkSinkResult();
+        } finally {
+            Files.deleteIfExists(empty);
+        }
+    }
 
     @Test
     public void testScan_001() throws Exception {

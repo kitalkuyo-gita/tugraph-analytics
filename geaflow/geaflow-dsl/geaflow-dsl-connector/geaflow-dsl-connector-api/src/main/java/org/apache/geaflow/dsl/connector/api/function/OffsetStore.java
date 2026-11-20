@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
 /**
  * The offset store for {@link TableSource} to read and write offset for each partition.
  */
-public class OffsetStore {
+public class OffsetStore implements AutoCloseable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OffsetStore.class);
 
@@ -112,13 +112,15 @@ public class OffsetStore {
         long bucketId = batchId % bucketNum;
         String key = generateKey(jobId, CHECKPOINT_OFFSET, tableName, partitionName, String.valueOf(bucketId));
         String keyForConsole = generateKey(jobId, CONSOLE_OFFSET, tableName, partitionName);
-        kvStoreCache.put(key, offset);
+        // A failed write may have committed remotely. Evict first so a retry reads
+        // the authoritative store instead of an uncommitted (or stale) cache entry.
+        kvStoreCache.remove(key);
         RetryCommand.run(() -> {
             kvStore.put(key, offset);
             jsonOffsetStore.put(keyForConsole, new ConsoleOffset(offset).toJson());
             return null;
         }, 3);
-
+        kvStoreCache.put(key, offset);
     }
 
     private static class OffsetKvSerializer implements IKVSerializer<String, Offset> {
@@ -153,6 +155,16 @@ public class OffsetStore {
             sb.append(strings[i]);
         }
         return sb.toString().replaceAll("'", "");
+    }
+
+    @Override
+    public void close() {
+        kvStoreCache.clear();
+        try {
+            kvStore.close();
+        } finally {
+            jsonOffsetStore.close();
+        }
     }
 
     public static class ConsoleOffset {

@@ -43,6 +43,15 @@
         <module>geaflow-dsl-connector-tests</module>
     </modules>
 
+    <profiles>
+        <profile>
+            <id>iceberg-cluster-it</id>
+            <modules>
+                <module>geaflow-dsl-connector-iceberg-tests</module>
+            </modules>
+        </profile>
+    </profiles>
+
     <properties>
         <calcite.version>1.18.0-geaflow_1.1</calcite.version>
         <kafka.version>2.4.1</kafka.version>

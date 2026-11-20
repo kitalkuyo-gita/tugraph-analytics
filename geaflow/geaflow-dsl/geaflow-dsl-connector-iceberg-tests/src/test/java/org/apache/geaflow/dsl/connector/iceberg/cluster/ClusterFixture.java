@@ -1,0 +1,144 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.geaflow.dsl.connector.iceberg.cluster;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import org.apache.geaflow.common.config.Configuration;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.DataFile;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.PartitionSpec;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.Schema;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.Table;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.data.GenericRecord;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.data.Record;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.data.parquet.GenericParquetWriter;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.deletes.EqualityDeleteWriter;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.deletes.PositionDelete;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.deletes.PositionDeleteWriter;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.hadoop.HadoopCatalog;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.io.DataWriter;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.parquet.Parquet;
+import org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.types.Types.NestedField;
+
+final class ClusterFixture implements AutoCloseable {
+    static final Schema SCHEMA = new Schema(
+        NestedField.optional(1, "id", org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.types.Types.LongType.get()),
+        NestedField.optional(2, "payload", org.apache.geaflow.dsl.connector.iceberg.shaded.org.apache.iceberg.types.Types.StringType.get()));
+    final Path directory;
+    final HadoopCatalog catalog;
+    final Table table;
+    final String jdbc;
+    final String databaseSchema;
+
+    ClusterFixture(Path directory, String databaseUrl) throws Exception {
+        this.directory = directory;
+        databaseSchema = "iceberg_cluster_" + UUID.randomUUID().toString().replace("-", "");
+        try (Connection connection = FixtureJdbc.connect(databaseUrl); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + databaseSchema);
+        }
+        jdbc = databaseUrl + (databaseUrl.contains("?") ? "&" : "?") + "currentSchema=" + databaseSchema;
+        catalog = new HadoopCatalog(new org.apache.hadoop.conf.Configuration(), directory.resolve("warehouse").toUri().toString());
+        Map<String, String> properties = new HashMap<>();
+        properties.put("format-version", "2");
+        properties.put("write.parquet.compression-codec", "uncompressed");
+        properties.put("write.parquet.row-group-size-bytes", "16384");
+        properties.put("write.parquet.row-group-check-min-record-count", "10");
+        table = catalog.createTable(TableIdentifier.of("db", "records"), SCHEMA, PartitionSpec.unpartitioned(), properties);
+        try (Connection connection = FixtureJdbc.connect(jdbc); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE geaflow_iceberg_runs (run_key VARCHAR(64) PRIMARY KEY, payload TEXT NOT NULL)");
+            statement.execute("CREATE TABLE geaflow_iceberg_tasks (run_key VARCHAR(64) NOT NULL, shard_id INTEGER NOT NULL, "
+                + "task_index INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(run_key, shard_id, task_index), "
+                + "FOREIGN KEY(run_key) REFERENCES geaflow_iceberg_runs(run_key))");
+        }
+    }
+
+    Configuration configuration(String run, int shards) {
+        Configuration conf = new Configuration();
+        conf.put("geaflow.dsl.iceberg." + "run-id", run);
+        conf.put("geaflow.dsl.iceberg." + "table", "db.records");
+        conf.put("geaflow.dsl.iceberg." + "catalog.type", "hadoop");
+        conf.put("geaflow.dsl.iceberg." + "catalog.properties.warehouse", directory.resolve("warehouse").toUri().toString());
+        conf.put("geaflow.dsl.iceberg." + "plan.jdbc.url", jdbc);
+        conf.put("geaflow.dsl.iceberg." + "shard-count", Integer.toString(shards));
+        conf.put("geaflow.dsl.iceberg." + "split.target-bytes", "16384");
+        if (System.getenv(FixtureJdbc.PASSWORD_ENV) != null) {
+            conf.put("geaflow.dsl.iceberg.plan.jdbc.password-env", FixtureJdbc.PASSWORD_ENV);
+        }
+        return conf;
+    }
+
+    DataFile append(long start, int count) throws IOException {
+        DataWriter<Record> writer = Parquet.writeData(table.io().newOutputFile(file()))
+            .schema(table.schema()).withSpec(table.spec()).setAll(table.properties())
+            .createWriterFunc(GenericParquetWriter::create).build();
+        try (DataWriter<Record> closeable = writer) {
+            for (long id = start; id < start + count; id++) {
+                GenericRecord record = GenericRecord.create(table.schema());
+                record.setField("id", id);
+                record.setField("payload", "值-" + id);
+                closeable.write(record);
+            }
+        }
+        DataFile result = writer.toDataFile();
+        table.newAppend().appendFile(result).commit();
+        return result;
+    }
+
+    void equalityDelete(Long id) throws IOException {
+        Schema keys = table.schema().select("id");
+        EqualityDeleteWriter<Record> writer = Parquet.writeDeletes(table.io().newOutputFile(file()))
+            .rowSchema(keys).withSpec(table.spec()).equalityFieldIds(1).setAll(table.properties())
+            .createWriterFunc(GenericParquetWriter::create).buildEqualityWriter();
+        try (EqualityDeleteWriter<Record> closeable = writer) {
+            GenericRecord record = GenericRecord.create(keys);
+            record.setField("id", id);
+            closeable.write(record);
+        }
+        table.newRowDelta().addDeletes(writer.toDeleteFile()).commit();
+    }
+
+    void positionDelete(DataFile file, long position) throws IOException {
+        PositionDeleteWriter<Record> writer = Parquet.writeDeletes(table.io().newOutputFile(file()))
+            .withSpec(table.spec()).setAll(table.properties()).buildPositionWriter();
+        try (PositionDeleteWriter<Record> closeable = writer) {
+            closeable.write(PositionDelete.<Record>create().set(file.location(), position));
+        }
+        table.newRowDelta().addDeletes(writer.toDeleteFile()).commit();
+    }
+
+    String file() {
+        return table.location() + "/data/" + UUID.randomUUID() + ".parquet";
+    }
+
+    @Override
+    public void close() throws Exception {
+        catalog.close();
+        try (Connection connection = FixtureJdbc.connect(jdbc); Statement statement = connection.createStatement()) {
+            statement.execute("DROP SCHEMA " + databaseSchema + " CASCADE");
+        }
+        // Keep unique per-run fixtures and component logs under target for failure diagnosis.
+    }
+}

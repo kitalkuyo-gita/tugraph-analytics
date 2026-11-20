@@ -115,11 +115,20 @@ public class GeaFlowTableSourceFunction extends RichFunction implements SourceFu
 
     @Override
     public void close() {
-        if (tableSource != null) {
-            tableSource.close();
-        }
-        if (singleThreadPool != null) {
-            singleThreadPool.shutdownNow();
+        try {
+            if (tableSource != null) {
+                tableSource.close();
+            }
+        } finally {
+            try {
+                if (offsetStore != null) {
+                    offsetStore.close();
+                }
+            } finally {
+                if (singleThreadPool != null) {
+                    singleThreadPool.shutdownNow();
+                }
+            }
         }
     }
 

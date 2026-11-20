@@ -1,0 +1,107 @@
+################################################################################
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+################################################################################
+
+name: Iceberg connector JDK 17
+
+on:
+  pull_request:
+    paths:
+      - 'geaflow/**'
+      - 'pom.xml'
+      - 'tools/checkstyle*'
+      - 'tools/ci/check-iceberg-isolation.sh'
+      - '.github/workflows/ci-iceberg-jdk17.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: iceberg-jdk17-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ICEBERG_TEST_PG_PASSWORD: iceberg-test-fixture
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: iceberg-test-fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - uses: arduino/setup-protoc@v2
+        with:
+          version: '21.7'
+      - name: Verify SDK, durable recovery, snapshot source and isolated artifact
+        run: |
+          mvn -B -ntp -Piceberg-jdk17,iceberg-postgres-it \
+            -pl geaflow/geaflow-dsl/geaflow-dsl-connector/geaflow-dsl-connector-iceberg -am install \
+            '-Dtest=Iceberg*Test,OffsetStoreRecoveryTest,JdbcPoolIsolationTest' \
+            -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.javadoc.skip=true \
+            '-Diceberg.test.postgres.url=jdbc:postgresql://localhost:5432/postgres?user=postgres'
+      - name: Verify default file and Paimon dependencies alongside Iceberg
+        run: bash tools/ci/check-iceberg-isolation.sh
+      - name: Build full runtime and multi-process acceptance harness
+        run: |
+          mvn -B -ntp -Piceberg-jdk17,iceberg-cluster-it \
+            -pl geaflow/geaflow-dsl/geaflow-dsl-connector-iceberg-tests -am install \
+            -DskipTests -Dskip.yarn=true -Dmaven.javadoc.skip=true
+      - name: Verify shared runtime regressions
+        run: |
+          mvn -B -ntp \
+            -pl geaflow/geaflow-core/geaflow-runtime/geaflow-processor,geaflow/geaflow-core/geaflow-runtime/geaflow-runtime-core,geaflow/geaflow-dsl/geaflow-dsl-runtime \
+            test '-Dtest=SinkProcessorTest,IncrAggregateProcessorTest,WindowRuntimeContextTest,TableScanTest' \
+            -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.javadoc.skip=true
+      - name: Verify real worker kill, checkpoint replay and SQL end to end
+        run: |
+          mvn -B -ntp -Piceberg-cluster-it \
+            -pl geaflow/geaflow-dsl/geaflow-dsl-connector-iceberg-tests verify \
+            '-Diceberg.test.postgres.url=jdbc:postgresql://localhost:5432/postgres?user=postgres' \
+            -Diceberg.test.redis.port=6379 -Dmaven.javadoc.skip=true
+      - name: Preserve test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iceberg-jdk17-test-reports
+          path: |
+            geaflow/**/target/surefire-reports/**
+            geaflow/**/target/failsafe-reports/**
+            geaflow/geaflow-dsl/geaflow-dsl-connector-iceberg-tests/target/cluster-*/*.log
+            geaflow/geaflow-dsl/geaflow-dsl-connector-iceberg-tests/target/cluster-*/*.txt
+            geaflow/geaflow-dsl/geaflow-dsl-connector-iceberg-tests/target/cluster-*/*-pid
+            geaflow/geaflow-dsl/geaflow-dsl-connector-iceberg-tests/target/cluster-*/plan-*.json
+          retention-days: 7

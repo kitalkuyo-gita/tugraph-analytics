@@ -30,6 +30,24 @@
 
     <artifactId>geaflow-assembly</artifactId>
 
+    <profiles>
+        <profile>
+            <id>iceberg-jdk17</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.apache.geaflow</groupId>
+                    <artifactId>geaflow-dsl-connector-iceberg</artifactId>
+                    <version>${project.version}</version>
+                    <classifier>isolated</classifier>
+                    <exclusions>
+                        <!-- The isolated artifact already contains its private SDK. -->
+                        <exclusion><groupId>*</groupId><artifactId>*</artifactId></exclusion>
+                    </exclusions>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
     <dependencies>
 
         <dependency>

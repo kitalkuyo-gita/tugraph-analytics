@@ -43,7 +43,9 @@ public abstract class BaseJdbcStore implements IBaseStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(BaseJdbcStore.class);
     private static final char SQL_SEPARATOR = ',';
 
-    private static HikariDataSource ds;
+    // Each store owns its pool. A static pool silently reuses the first job's
+    // database/credentials and lets closing one source break another source.
+    private transient HikariDataSource ds;
 
     protected String tableName;
     protected Configuration config;
@@ -55,6 +57,7 @@ public abstract class BaseJdbcStore implements IBaseStore {
     private String queryFormat;
 
     public void init(StoreContext storeContext) {
+        close();
         this.tableName = storeContext.getName();
         this.config = storeContext.getConfig();
         this.retries = this.config.getInteger(JdbcConfigKeys.JDBC_MAX_RETRIES);
@@ -150,8 +153,9 @@ public abstract class BaseJdbcStore implements IBaseStore {
 
     @Override
     public synchronized void close() {
-        if (!ds.isClosed()) {
+        if (ds != null && !ds.isClosed()) {
             ds.close();
         }
+        ds = null;
     }
 }

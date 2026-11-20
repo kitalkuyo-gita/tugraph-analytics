@@ -59,6 +59,7 @@ public abstract class AbstractProcessor<T, R, OP extends Operator> implements Pr
 
     @Override
     public void init(long windowId) {
+        ((AbstractOperator<?>) operator).updateRuntimeWindow(windowId);
     }
 
     @Override

@@ -131,11 +131,13 @@ public class GeaFlowQueryEngine implements QueryEngine {
             } else {
                 sourceParallelism = numPartitions / partitionsPerParallelism;
             }
+            // An empty source still needs a task to signal completion to downstream operators.
+            sourceParallelism = Math.max(1, sourceParallelism);
         }
         if (!(tableSource instanceof ISkipOpenAndClose)) {
             tableSource.close();
         }
-        if (context.getConfigParallelisms(opName, sourceParallelism) == -1
+        if (context.getConfigParallelisms(opName, -1) == -1
             && Configuration.getInteger(DSLConfigKeys.GEAFLOW_DSL_TABLE_PARALLELISM, -1, table.getConfig()) == -1) {
             parallelism = sourceParallelism;
         }

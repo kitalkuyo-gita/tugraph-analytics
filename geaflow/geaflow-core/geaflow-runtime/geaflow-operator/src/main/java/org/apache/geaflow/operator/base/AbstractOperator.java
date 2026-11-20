@@ -35,6 +35,7 @@ import org.apache.geaflow.collector.ICollector;
 import org.apache.geaflow.collector.chain.IChainCollector;
 import org.apache.geaflow.collector.chain.OpChainCollector;
 import org.apache.geaflow.common.config.keys.ExecutionConfigKeys;
+import org.apache.geaflow.context.AbstractRuntimeContext;
 import org.apache.geaflow.metrics.common.MetricConstants;
 import org.apache.geaflow.metrics.common.MetricGroupRegistry;
 import org.apache.geaflow.metrics.common.MetricNameFormatter;
@@ -122,6 +123,14 @@ public abstract class AbstractOperator<FUNC extends Function> implements Operato
             }
         }
 
+    }
+
+    /** Updates the per-operator contexts, including all operators in the chain. */
+    public void updateRuntimeWindow(long windowId) {
+        ((AbstractRuntimeContext) runtimeContext).updateWindowId(windowId);
+        for (Operator subOperator : subOperatorList) {
+            ((AbstractOperator<?>) subOperator).updateRuntimeWindow(windowId);
+        }
     }
 
     @Override
